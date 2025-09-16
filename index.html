@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出貨單系統</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>出貨單系統</h1>
+        
+        <div class="upload-section">
+            <label for="excelFile">上傳Excel檔案:</label>
+            <input type="file" id="excelFile" accept=".xlsx,.xls" />
+        </div>
+
+        <div class="search-section">
+            <label for="productSearch">搜尋品名:</label>
+            <div class="search-input-group">
+                <input type="text" id="productSearch" placeholder="輸入品名關鍵字或數字末四碼進行模糊搜尋" />
+                <button id="searchBtn" class="search-btn">搜尋</button>
+            </div>
+            <div id="searchResults" class="search-results"></div>
+        </div>
+
+        <div class="selected-section">
+            <h3>已選擇的產品</h3>
+            <table id="selectedTable">
+                <thead>
+                    <tr>
+                        <th>NO.</th>
+                        <th>品名</th>
+                        <th>數量</th>
+                        <th>單價</th>
+                        <th>小計</th>
+                        <th>採購單號</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="selectedItems">
+                </tbody>
+            </table>
+            <div class="export-section">
+                <button id="exportQuote" class="export-btn">匯出出貨單</button>
+                <button id="viewDailyExports" class="view-btn">查看當天匯出記錄</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
