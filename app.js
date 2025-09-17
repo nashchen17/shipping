@@ -334,154 +334,50 @@ function exportQuote() {
     let exportCount = parseInt(localStorage.getItem('dailyExportCount') || '0') + 1;
     localStorage.setItem('dailyExportCount', exportCount.toString());
     
-    // 建立出貨單模板數據
-    const deliveryNoteData = createDeliveryNoteTemplate(selectedItems, today, exportCount);
-    
-    // 將當前匯出加入到當天記錄中
-    // 產生兩碼西元年月日+兩碼流水號（如25091601）
+    // 產生西元年月日-兩碼流水號（如20250916-01）
     const now = new Date();
-    const year = (now.getFullYear() % 100).toString().padStart(2, '0');
+    const year = now.getFullYear().toString();
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const day = now.getDate().toString().padStart(2, '0');
     const serial = exportCount.toString().padStart(2, '0');
-    const sheetName = `${year}${month}${day}${serial}`;
+    const deliveryNo = `${year}${month}${day}-${serial}`;
+    
+    // 將當前匯出加入到當天記錄中
     const exportRecord = {
-        sheetName: sheetName,
-        data: deliveryNoteData,
-        timestamp: new Date().toLocaleTimeString()
+        deliveryNo: deliveryNo,
+        items: [...selectedItems], // 複製選中的項目
+        timestamp: new Date().toLocaleTimeString(),
+        date: today
     };
     
     dailyExports.push(exportRecord);
     
-    // 嘗試讀取現有的Excel檔案，如果不存在則創建新的
+    // 創建或更新包含所有出貨單的單一工作表
     let wb;
     try {
-        // 檢查瀏覽器是否支援 File System Access API
-        if ('showSaveFilePicker' in window) {
-            // 如果是第一次匯出或檔案不存在，創建新工作簿
-            if (dailyExports.length === 1) {
-                wb = XLSX.utils.book_new();
-            } else {
-                // 嘗試從 localStorage 載入現有的工作簿資料
-                const existingWorkbookData = localStorage.getItem(`workbook_${today}`);
-                if (existingWorkbookData) {
-                    wb = XLSX.read(existingWorkbookData, { type: 'binary' });
-                } else {
-                    wb = XLSX.utils.book_new();
-                    // 重新添加之前的工作表
-                    for (let i = 0; i < dailyExports.length - 1; i++) {
-                        const record = dailyExports[i];
-                        const ws = XLSX.utils.aoa_to_sheet(record.data);
-                        setupDeliveryNotePrintFormat(ws);
-                        XLSX.utils.book_append_sheet(wb, ws, record.sheetName);
-                    }
-                }
-            }
+        // 嘗試從 localStorage 載入現有的工作簿資料
+        const existingWorkbookData = localStorage.getItem(`workbook_${today}`);
+        if (existingWorkbookData && dailyExports.length > 1) {
+            wb = XLSX.read(existingWorkbookData, { type: 'binary' });
+            // 刪除舊的工作表，重新創建包含所有資料的工作表
+            wb.SheetNames = [];
+            wb.Sheets = {};
         } else {
-            // 對於不支援 File System Access API 的瀏覽器，重新創建包含所有工作表的工作簿
             wb = XLSX.utils.book_new();
-            
-            // 添加所有當天的匯出記錄
-            dailyExports.forEach(record => {
-                const ws = XLSX.utils.aoa_to_sheet(record.data);
-                setupDeliveryNotePrintFormat(ws);
-                
-                // 特別設定產品明細行和標題
-                for (let row = 5; row <= 12; row++) {
-                    for (let col = 0; col <= 6; col++) {
-                        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-                        if (!ws[cellAddress]) {
-                            ws[cellAddress] = { t: 's', v: '' };
-                        }
-                        ws[cellAddress].s = {
-                            font: { name: 'Cambria', sz: 12, bold: false },
-                            alignment: { horizontal: 'left', vertical: 'center' }
-                        };
-                    }
-                }
-                
-                // 確保A1標題格式正確
-                if (ws['A1']) {
-                    ws['A1'].v = '出    貨    單';
-                    ws['A1'].t = 's';
-                    ws['A1'].s = {
-                        alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
-                        font: { name: 'Cambria', bold: true, sz: 23 }
-                    };
-                }
-                
-                XLSX.utils.book_append_sheet(wb, ws, record.sheetName);
-            });
         }
     } catch (error) {
         console.log('無法讀取現有檔案，創建新的工作簿');
         wb = XLSX.utils.book_new();
-        
-        // 添加所有當天的匯出記錄
-        dailyExports.forEach(record => {
-            const ws = XLSX.utils.aoa_to_sheet(record.data);
-            setupDeliveryNotePrintFormat(ws);
-            
-            // 特別設定產品明細行和標題
-            for (let row = 5; row <= 12; row++) {
-                for (let col = 0; col <= 6; col++) {
-                    const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-                    if (!ws[cellAddress]) {
-                        ws[cellAddress] = { t: 's', v: '' };
-                    }
-                    ws[cellAddress].s = {
-                        font: { name: 'Cambria', sz: 12, bold: false },
-                        alignment: { horizontal: 'left', vertical: 'center' }
-                    };
-                }
-            }
-            
-            // 確保A1標題格式正確
-            if (ws['A1']) {
-                ws['A1'].v = '出    貨    單';
-                ws['A1'].t = 's';
-                ws['A1'].s = {
-                    alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
-                    font: { name: 'Cambria', bold: true, sz: 23 }
-                };
-            }
-            
-            XLSX.utils.book_append_sheet(wb, ws, record.sheetName);
-        });
     }
     
-    // 如果是新增工作表（不是重新創建整個工作簿）
-    if (dailyExports.length > 1 && wb.SheetNames.length < dailyExports.length) {
-        const currentRecord = dailyExports[dailyExports.length - 1];
-        const ws = XLSX.utils.aoa_to_sheet(currentRecord.data);
-        setupDeliveryNotePrintFormat(ws);
-        
-        // 特別設定產品明細行和標題
-        for (let row = 5; row <= 12; row++) {
-            for (let col = 0; col <= 6; col++) {
-                const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-                if (!ws[cellAddress]) {
-                    ws[cellAddress] = { t: 's', v: '' };
-                }
-                ws[cellAddress].s = {
-                    font: { name: 'Cambria', sz: 12, bold: false },
-                    alignment: { horizontal: 'left', vertical: 'center' }
-                };
-            }
-        }
-        
-        // 確保A1標題格式正確
-        if (ws['A1']) {
-            ws['A1'].v = '出    貨    單';
-            ws['A1'].t = 's';
-            ws['A1'].s = {
-                alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
-                font: { name: 'Cambria', bold: true, sz: 23 }
-            };
-        }
-        
-        XLSX.utils.book_append_sheet(wb, ws, currentRecord.sheetName);
-    }
+    // 創建包含所有出貨單的工作表資料
+    const allDeliveryData = createCombinedDeliveryNoteTemplate(dailyExports);
+    const ws = XLSX.utils.aoa_to_sheet(allDeliveryData);
+    setupCombinedDeliveryNotePrintFormat(ws, dailyExports.length);
+    
+    // 添加工作表到工作簿
+    const sheetName = `出貨單_${today.replace(/-/g, '')}`;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
     
     // 將工作簿資料儲存到 localStorage 以便下次使用
     try {
@@ -496,8 +392,8 @@ function exportQuote() {
     
     // 顯示成功訊息
     const isNewFile = exportCount === 1;
-    const actionText = isNewFile ? '已創建新檔案' : '已添加新工作表到現有檔案';
-    alert(`出貨單匯出成功！\n${actionText}\n檔案名稱：${fileName}\n工作表總數：${wb.SheetNames.length}\n最新工作表：${exportRecord.sheetName}\n匯出時間：${exportRecord.timestamp}`);
+    const actionText = isNewFile ? '已創建新檔案' : '已更新現有檔案';
+    alert(`出貨單匯出成功！\n${actionText}\n檔案名稱：${fileName}\n出貨單數量：${dailyExports.length}\n最新出貨單號：${deliveryNo}\n匯出時間：${exportRecord.timestamp}`);
     
     // 清空當前選擇的產品，準備下一次匯出
     selectedItems = [];
@@ -518,13 +414,13 @@ function createDeliveryNoteTemplate(items, date, serialNumber) {
     data.push(['TEL：(07)375-6043', '', '', '', '出貨日期', date.replace(/-/g, '/'), '']);
     
     // 第4列：傳真 + 單號編號
-    // 單號編號也改為兩碼年+月+日+兩碼流水號
+    // 單號編號改為西元年月日-兩碼流水號
     const now = new Date();
-    const year = (now.getFullYear() % 100).toString().padStart(2, '0');
+    const year = now.getFullYear().toString();
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const day = now.getDate().toString().padStart(2, '0');
     const serial = serialNumber.toString().padStart(2, '0');
-    const deliveryNo = `${year}${month}${day}${serial}`;
+    const deliveryNo = `${year}${month}${day}-${serial}`;
     data.push(['FAX：(07)373-2742', '', '', '', '單號編號', deliveryNo, '']);
     
     // 第5列：表格標題
@@ -718,18 +614,19 @@ function viewDailyExports() {
     let totalItems = 0;
     
     dailyExports.forEach((record, index) => {
-        // 計算該工作表的產品數量（扣除標題和格式行）
-        const itemCount = record.data.slice(5, 13).filter(row => row[1] && row[1].trim() !== '').length;
+        // 計算該出貨單的產品數量
+        const itemCount = record.items.length;
         totalItems += itemCount;
         
-        message += `${index + 1}. 工作表：${record.sheetName}\n`;
+        message += `${index + 1}. 出貨單號：${record.deliveryNo}\n`;
         message += `   匯出時間：${record.timestamp}\n`;
         message += `   產品數量：${itemCount} 項\n\n`;
     });
     
-    message += `總計：${dailyExports.length} 個工作表\n`;
+    message += `總計：${dailyExports.length} 張出貨單\n`;
     message += `總產品數：${totalItems} 項\n`;
-    message += `檔案名稱：出貨單_${today}.xlsx`;
+    message += `檔案名稱：出貨單_${today}.xlsx\n`;
+    message += `所有出貨單已合併在同一個工作表中`;
     
     alert(message);
 }
@@ -748,4 +645,145 @@ function isCompleteInput(searchTerm) {
     const isLongEnough = trimmed.length >= 10; // 完整型號通常較長
     
     return isPattern && isLongEnough;
+}
+
+// 創建包含所有出貨單的合併模板
+function createCombinedDeliveryNoteTemplate(exports) {
+    const data = [];
+    const itemsPerDelivery = 8; // 每張出貨單的產品行數
+    const linesPerDelivery = 18; // 每張出貨單的總行數
+    
+    exports.forEach((exportRecord, exportIndex) => {
+        const isFirstDelivery = exportIndex === 0;
+        
+        // 如果不是第一張出貨單，加入分隔空行
+        if (!isFirstDelivery) {
+            data.push(['', '', '', '', '', '', '']); // 分隔線
+        }
+        
+        // 第1列：出貨單標題
+        data.push(['出    貨    單', '', '', '', '', '', '']);
+        
+        // 第2列：慶沅機械有限公司 + 客戶代號
+        data.push(['慶沅機械有限公司', '', '', '', '客戶代號', 'FS', '']);
+        
+        // 第3列：電話 + 出貨日期
+        data.push(['TEL：(07)375-6043', '', '', '', '出貨日期', exportRecord.date.replace(/-/g, '/'), '']);
+        
+        // 第4列：傳真 + 單號編號
+        data.push(['FAX：(07)373-2742', '', '', '', '單號編號', exportRecord.deliveryNo, '']);
+        
+        // 第5列：表格標題
+        data.push(['NO.', '品名', '數量', '單價', '小計', '備註', '']);
+        
+        // 第6-13列：產品明細行（8行）
+        for (let i = 0; i < itemsPerDelivery; i++) {
+            if (i < exportRecord.items.length) {
+                const item = exportRecord.items[i];
+                data.push([
+                    item.no,
+                    item.dwg,
+                    item.quantity,
+                    item.unitPrice,
+                    item.subtotal,
+                    item.poNumber,
+                    ''
+                ]);
+            } else {
+                // 空行
+                data.push(['', '', '', '', '', '', '']);
+            }
+        }
+        
+        // 第14-16列：空行（3行）
+        data.push(['', '', '', '', '', '', '']);
+        data.push(['', '', '', '', '', '', '']);
+        data.push(['', '', '', '', '', '', '']);
+        
+        // 第17列：合計
+        const totalAmount = exportRecord.items.reduce((sum, item) => sum + item.subtotal, 0);
+        data.push(['', '', '', '合計', `$${totalAmount}`, '', '']);
+        
+        // 第18列：打單和簽收
+        data.push(['打單', 'Liya', '', '', '', '簽收', '']);
+    });
+    
+    return data;
+}
+
+// 設定合併出貨單的列印格式
+function setupCombinedDeliveryNotePrintFormat(ws, deliveryCount) {
+    // 設定欄寬 - 按照指定的精確寬度
+    ws['!cols'] = [
+        { wch: 8 },      // A欄
+        { wch: 32.12 },  // B欄
+        { wch: 6.13 },   // C欄
+        { wch: 10.13 },  // D欄
+        { wch: 10.13 },  // E欄
+        { wch: 18.25 },  // F欄
+        { wch: 10 }      // G欄
+    ];
+    
+    // 設定列高
+    ws['!rows'] = [];
+    const linesPerDelivery = 18;
+    const totalRows = deliveryCount * linesPerDelivery + (deliveryCount - 1); // 加上分隔行
+    
+    for (let deliveryIndex = 0; deliveryIndex < deliveryCount; deliveryIndex++) {
+        const startRow = deliveryIndex * (linesPerDelivery + 1); // +1 for separator
+        const separatorOffset = deliveryIndex > 0 ? 1 : 0; // 第一張沒有分隔行
+        
+        // 分隔行（如果不是第一張）
+        if (deliveryIndex > 0) {
+            ws['!rows'][startRow - 1] = { hpt: 21 };
+        }
+        
+        // 第1列高度設為36（標題）
+        ws['!rows'][startRow + separatorOffset] = { hpt: 36 };
+        
+        // 第2到18列高度設為21
+        for (let i = 1; i < linesPerDelivery; i++) {
+            ws['!rows'][startRow + separatorOffset + i] = { hpt: 21 };
+        }
+    }
+    
+    // 設定儲存格合併和格式
+    ws['!merges'] = [];
+    
+    for (let deliveryIndex = 0; deliveryIndex < deliveryCount; deliveryIndex++) {
+        const baseRow = deliveryIndex * (linesPerDelivery + 1) + (deliveryIndex > 0 ? 1 : 0);
+        
+        // 合併儲存格
+        ws['!merges'].push(
+            { s: { r: baseRow, c: 0 }, e: { r: baseRow, c: 6 } }, // A1:G1 - 出貨單標題
+            { s: { r: baseRow + 1, c: 0 }, e: { r: baseRow + 1, c: 1 } }, // A2:B2 - 慶沅機械有限公司
+            { s: { r: baseRow + 2, c: 0 }, e: { r: baseRow + 2, c: 1 } }, // A3:B3 - 電話
+            { s: { r: baseRow + 3, c: 0 }, e: { r: baseRow + 3, c: 1 } }  // A4:B4 - 傳真
+        );
+        
+        // 設定標題格式
+        const titleCellAddress = XLSX.utils.encode_cell({ r: baseRow, c: 0 });
+        if (!ws[titleCellAddress]) {
+            ws[titleCellAddress] = { t: 's', v: '出    貨    單' };
+        }
+        ws[titleCellAddress].s = {
+            alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
+            font: { name: 'Cambria', bold: true, sz: 23 }
+        };
+    }
+    
+    // 設定頁面佈局為 A4 直印
+    ws['!printSettings'] = {
+        paperSize: 9, // A4
+        orientation: 'portrait',
+        scale: 100,
+        margins: {
+            top: 0.75,
+            bottom: 0.75,
+            left: 0.7,
+            right: 0.7,
+            header: 0.3,
+            footer: 0.3
+        }
+    };
 }
