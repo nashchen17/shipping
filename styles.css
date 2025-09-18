@@ -169,3 +169,72 @@ th {
 .export-btn:hover {
     background-color: #218838;
 }
+
+.selected-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.selected-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.document-number-info {
+    display: flex;
+    align-items: center;
+    background-color: #e7f3ff;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    padding: 8px 15px;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.1);
+}
+
+.document-label {
+    font-weight: bold;
+    color: #0056b3;
+    margin-right: 8px;
+    font-size: 14px;
+}
+
+.document-value {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #007bff;
+    font-size: 16px;
+    background-color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #b3d9ff;
+    min-width: 120px;
+    text-align: center;
+}
+
+.selected-item {
+    background-color: #f8f9fa !important;
+    color: #6c757d !important;
+    border-color: #dee2e6 !important;
+    opacity: 0.7;
+    cursor: default !important;
+}
+
+.selected-item:hover {
+    background-color: #f8f9fa !important;
+}
+
+.disabled-btn {
+    background-color: #6c757d !important;
+    color: white !important;
+    border: none;
+    padding: 5px 15px;
+    border-radius: 3px;
+    cursor: not-allowed !important;
+    opacity: 0.7;
+}
+
+.disabled-btn:hover {
+    background-color: #6c757d !important;
+    cursor: not-allowed !important;
+}

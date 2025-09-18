@@ -9,6 +9,62 @@ document.getElementById('searchBtn').addEventListener('click', searchProducts);
 document.getElementById('exportQuote').addEventListener('click', exportQuote);
 document.getElementById('viewDailyExports').addEventListener('click', viewDailyExports);
 
+// 頁面載入時初始化單據編號顯示
+document.addEventListener('DOMContentLoaded', function() {
+    updateDocumentNumber();
+});
+
+// 更新單據編號顯示
+function updateDocumentNumber() {
+    const documentNumberElement = document.getElementById('documentNumber');
+    if (documentNumberElement) {
+        const nextDocumentNumber = generateNextDocumentNumber();
+        documentNumberElement.textContent = nextDocumentNumber;
+    }
+}
+
+// 生成下一個單據編號
+function generateNextDocumentNumber() {
+    const today = new Date().toISOString().slice(0, 10);
+    const lastExportDate = localStorage.getItem('lastExportDate');
+    
+    // 如果是新的一天，重置計數器
+    if (lastExportDate !== today) {
+        return generateDocumentNumber(1);
+    }
+    
+    // 取得當前匯出次數並生成下一個編號
+    const exportCount = parseInt(localStorage.getItem('dailyExportCount') || '0') + 1;
+    return generateDocumentNumber(exportCount);
+}
+
+// 生成單據編號（格式：YYYYMMDD-XX）
+function generateDocumentNumber(serialNumber) {
+    const now = new Date();
+    const year = now.getFullYear().toString();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const serial = serialNumber.toString().padStart(2, '0');
+    return `${year}${month}${day}-${serial}`;
+}
+
+// 檢查產品是否已被加入選擇清單
+function isProductAlreadySelected(dwg, nc, poNumber) {
+    return selectedItems.some(item => 
+        item.dwg === dwg && 
+        item.nc === nc && 
+        item.poNumber === poNumber
+    );
+}
+
+// 刷新搜索結果顯示狀態
+function refreshSearchResults() {
+    const searchTerm = document.getElementById('productSearch').value.trim();
+    if (searchTerm && excelData.length > 0) {
+        searchProducts(); // 重新執行搜索以更新狀態
+    }
+}
+
 function handleFile(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -192,7 +248,13 @@ function searchProducts() {
     
     filteredData.forEach((item, index) => {
         const itemDiv = document.createElement('div');
-        itemDiv.className = 'search-item';
+        const isSelected = isProductAlreadySelected(item.dwg, item.nc, item.poNumber);
+        
+        itemDiv.className = isSelected ? 'search-item selected-item' : 'search-item';
+        
+        const buttonText = isSelected ? '已加入' : '加入';
+        const buttonDisabled = isSelected ? 'disabled' : '';
+        const buttonClass = isSelected ? 'add-btn disabled-btn' : 'add-btn';
         
         itemDiv.innerHTML = `
             <div>
@@ -200,22 +262,25 @@ function searchProducts() {
                 <span style="color: #666; font-size: 12px;">
                     (${item.matchType}: ${item.similarity}%)
                 </span><br>
-                NC: ${item.nc} | 單價: $${item.unitPrice} | 採購單號: ${item.poNumber}
+                NC: ${item.nc} | 數量: ${item.quantity} | 單價: $${item.unitPrice} | 採購單號: ${item.poNumber}
             </div>
-            <button class="add-btn">加入</button>
+            <button class="${buttonClass}" ${buttonDisabled}>${buttonText}</button>
         `;
         
-        // 為整個項目添加點擊事件
-        itemDiv.addEventListener('click', () => {
-            addToSelected(item.dwg, item.unitPrice, item.nc, item.poNumber);
-        });
-        
-        // 為按鈕添加獨立的點擊事件
-        const addBtn = itemDiv.querySelector('.add-btn');
-        addBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            addToSelected(item.dwg, item.unitPrice, item.nc, item.poNumber);
-        });
+        // 只有未選擇的項目才添加點擊事件
+        if (!isSelected) {
+            // 為整個項目添加點擊事件
+            itemDiv.addEventListener('click', () => {
+                addToSelected(item.dwg, item.unitPrice, item.nc, item.poNumber, item.quantity);
+            });
+            
+            // 為按鈕添加獨立的點擊事件
+            const addBtn = itemDiv.querySelector('.add-btn');
+            addBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                addToSelected(item.dwg, item.unitPrice, item.nc, item.poNumber, item.quantity);
+            });
+        }
         
         resultsDiv.appendChild(itemDiv);
     });
@@ -233,8 +298,8 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;'); // 轉義雙引號
 }
 
-function addToSelected(dwg, unitPrice, nc, poNumber) {
-    console.log('addToSelected 被調用:', { dwg, unitPrice, nc, poNumber });
+function addToSelected(dwg, unitPrice, nc, poNumber, originalQuantity = 1) {
+    console.log('addToSelected 被調用:', { dwg, unitPrice, nc, poNumber, originalQuantity });
     
     // 修改檢查邏輯：檢查是否為完全相同的產品（所有關鍵欄位都相同）
     const existingItem = selectedItems.find(item => 
@@ -245,11 +310,12 @@ function addToSelected(dwg, unitPrice, nc, poNumber) {
     
     if (existingItem) {
         // 如果是完全相同的產品，詢問是否要增加數量
-        const confirmIncrease = confirm(`此產品已在清單中！\n\n產品：${dwg}\nNC：${nc}\n採購單號：${poNumber}\n\n是否要將數量增加 1？`);
+        const confirmIncrease = confirm(`此產品已在清單中！\n\n產品：${dwg}\nNC：${nc}\n採購單號：${poNumber}\n目前數量：${existingItem.quantity}\n\n是否要將數量增加 ${originalQuantity}？`);
         if (confirmIncrease) {
-            existingItem.quantity += 1;
+            existingItem.quantity += originalQuantity;
             existingItem.subtotal = existingItem.unitPrice * existingItem.quantity;
             updateSelectedTable();
+            refreshSearchResults(); // 刷新搜索結果顯示狀態
             alert(`產品數量已增加！目前數量：${existingItem.quantity}`);
         }
         return;
@@ -259,9 +325,9 @@ function addToSelected(dwg, unitPrice, nc, poNumber) {
         no: String(itemCounter++).padStart(2, '0'),
         nc: nc,
         dwg: dwg,
-        quantity: 1,
+        quantity: originalQuantity, // 使用Excel中的原始數量
         unitPrice: unitPrice,
-        subtotal: unitPrice,
+        subtotal: unitPrice * originalQuantity, // 小計也要相應調整
         poNumber: poNumber
     };
     
@@ -270,6 +336,8 @@ function addToSelected(dwg, unitPrice, nc, poNumber) {
     console.log('目前選擇的產品:', selectedItems);
     
     updateSelectedTable();
+    updateDocumentNumber(); // 更新單據編號顯示
+    refreshSearchResults(); // 刷新搜索結果顯示狀態
 }
 
 function updateSelectedTable() {
@@ -311,6 +379,8 @@ function updateQuantity(index, newQuantity) {
 function removeItem(index) {
     selectedItems.splice(index, 1);
     updateSelectedTable();
+    updateDocumentNumber(); // 更新單據編號顯示
+    refreshSearchResults(); // 刷新搜索結果顯示狀態
 }
 
 function exportQuote() {
@@ -355,16 +425,16 @@ function exportQuote() {
     // 創建或更新包含所有出貨單的單一工作表
     let wb;
     try {
-        // 嘗試從 localStorage 載入現有的工作簿資料
-        const existingWorkbookData = localStorage.getItem(`workbook_${today}`);
-        if (existingWorkbookData && dailyExports.length > 1) {
-            wb = XLSX.read(existingWorkbookData, { type: 'binary' });
-            // 刪除舊的工作表，重新創建包含所有資料的工作表
-            wb.SheetNames = [];
-            wb.Sheets = {};
-        } else {
+        // 暫時禁用localStorage快取，強制創建新工作簿
+        // const existingWorkbookData = localStorage.getItem(`workbook_${today}`);
+        // if (existingWorkbookData && dailyExports.length > 1) {
+        //     wb = XLSX.read(existingWorkbookData, { type: 'binary' });
+        //     // 刪除舊的工作表，重新創建包含所有資料的工作表
+        //     wb.SheetNames = [];
+        //     wb.Sheets = {};
+        // } else {
             wb = XLSX.utils.book_new();
-        }
+        // }
     } catch (error) {
         console.log('無法讀取現有檔案，創建新的工作簿');
         wb = XLSX.utils.book_new();
@@ -375,20 +445,41 @@ function exportQuote() {
     const ws = XLSX.utils.aoa_to_sheet(allDeliveryData);
     setupCombinedDeliveryNotePrintFormat(ws, dailyExports.length);
     
+    // 額外強制設定第一個標題字體（最後一次嘗試）
+    if (ws['A1']) {
+        ws['A1'].v = '★★★  出  貨  單  ★★★';  // 強制更改文字內容
+        ws['A1'].s = {
+            font: { 
+                name: 'Arial Black', 
+                sz: 36, 
+                bold: true, 
+                color: { rgb: 'FF0000' } 
+            },
+            alignment: { horizontal: 'center', vertical: 'center' },
+            fill: { fgColor: { rgb: 'FFFF00' } }
+        };
+        console.log('最終設定A1:', ws['A1'].v, ws['A1'].s);
+    }
+    
     // 添加工作表到工作簿
     const sheetName = `出貨單_${today.replace(/-/g, '')}`;
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     
-    // 將工作簿資料儲存到 localStorage 以便下次使用
-    try {
-        const workbookBinary = XLSX.write(wb, { type: 'binary', bookType: 'xlsx' });
-        localStorage.setItem(`workbook_${today}`, workbookBinary);
-    } catch (error) {
-        console.log('無法儲存工作簿到 localStorage:', error);
-    }
+    // 將工作簿資料儲存到 localStorage 以便下次使用 (暫時禁用)
+    // try {
+    //     const workbookBinary = XLSX.write(wb, { type: 'binary', bookType: 'xlsx' });
+    //     localStorage.setItem(`workbook_${today}`, workbookBinary);
+    // } catch (error) {
+    //     console.log('無法儲存工作簿到 localStorage:', error);
+    // }
     
-    // 匯出檔案
-    XLSX.writeFile(wb, fileName);
+    // 匯出檔案 - 使用不同的寫入選項
+    XLSX.writeFile(wb, fileName, {
+        bookType: 'xlsx',
+        cellStyles: true,
+        cellNF: false,
+        cellHTML: false
+    });
     
     // 顯示成功訊息
     const isNewFile = exportCount === 1;
@@ -399,6 +490,8 @@ function exportQuote() {
     selectedItems = [];
     itemCounter = 1;
     updateSelectedTable();
+    updateDocumentNumber(); // 更新下一個單據編號
+    refreshSearchResults(); // 刷新搜索結果顯示狀態
 }
 
 function createDeliveryNoteTemplate(items, date, serialNumber) {
@@ -518,17 +611,17 @@ function setupDeliveryNotePrintFormat(ws) {
     
     // 預設字型樣式
     const defaultFont = {
-        name: 'Cambria',
+        name: 'Noto Sans HK Black',   //Cambria
         sz: 12,
         bold: false,
         color: { rgb: '000000' }
     };
     
     const titleFont = {
-        name: 'Cambria',
-        sz: 23,
+        name: 'Microsoft JhengHei',
+        sz: 50,
         bold: true,
-        color: { rgb: '000000' }
+        color: { rgb: 'FF0000' }
     };
     
     // 設定所有儲存格的字型為 Cambria
@@ -581,7 +674,7 @@ function setupDeliveryNotePrintFormat(ws) {
             // 強制重新設定產品明細行的字型
             ws[cellAddress].s = {
                 font: {
-                    name: 'Cambria',
+                    name: 'Noto Sans HK Black',
                     sz: 12,
                     bold: false,
                     color: { rgb: '000000' }
@@ -661,8 +754,8 @@ function createCombinedDeliveryNoteTemplate(exports) {
             data.push(['', '', '', '', '', '', '']); // 分隔線
         }
         
-        // 第1列：出貨單標題
-        data.push(['出    貨    單', '', '', '', '', '', '']);
+        // 第1列：出貨單標題 - 使用更顯眼的文字
+        data.push(['★★★  出  貨  單  ★★★', '', '', '', '', '', '']);
         
         // 第2列：慶沅機械有限公司 + 客戶代號
         data.push(['慶沅機械有限公司', '', '', '', '客戶代號', 'FS', '']);
@@ -738,8 +831,8 @@ function setupCombinedDeliveryNotePrintFormat(ws, deliveryCount) {
             ws['!rows'][startRow - 1] = { hpt: 21 };
         }
         
-        // 第1列高度設為36（標題）
-        ws['!rows'][startRow + separatorOffset] = { hpt: 36 };
+        // 第1列高度設為80（標題）- 加大讓標題更顯眼
+        ws['!rows'][startRow + separatorOffset] = { hpt: 80 };
         
         // 第2到18列高度設為21
         for (let i = 1; i < linesPerDelivery; i++) {
@@ -761,15 +854,30 @@ function setupCombinedDeliveryNotePrintFormat(ws, deliveryCount) {
             { s: { r: baseRow + 3, c: 0 }, e: { r: baseRow + 3, c: 1 } }  // A4:B4 - 傳真
         );
         
-        // 設定標題格式
+        // 設定標題格式 - 由於樣式不生效，改變文字內容本身
         const titleCellAddress = XLSX.utils.encode_cell({ r: baseRow, c: 0 });
-        if (!ws[titleCellAddress]) {
-            ws[titleCellAddress] = { t: 's', v: '出    貨    單' };
-        }
-        ws[titleCellAddress].s = {
-            alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
-            font: { name: 'Cambria', bold: true, sz: 23 }
+        
+        // 使用特殊符號和文字使標題更顯眼
+        ws[titleCellAddress] = { 
+            t: 's', 
+            v: '★★★  出  貨  單  ★★★' 
         };
+        
+        // 仍然嘗試設定樣式（雖然可能無效）
+        ws[titleCellAddress].s = {
+            font: { 
+                name: 'Arial Black',
+                sz: 36,
+                bold: true,
+                color: { rgb: 'FF0000' }
+            },
+            alignment: { 
+                horizontal: 'center', 
+                vertical: 'center' 
+            }
+        };
+        
+        console.log('設定標題內容:', ws[titleCellAddress].v);
     }
     
     // 設定頁面佈局為 A4 直印
